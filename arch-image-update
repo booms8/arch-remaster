@@ -1,0 +1,121 @@
+#/bin/sh
+# Script to update the PXE image
+
+# Standard location variables:
+
+# Image path/name
+IMAGE="/img/arch-custom.iso"
+
+# Image label
+IMGLAB="ARCH_201407"
+
+# Mount point for the image
+IMGMNT="/mnt/archiso/"
+
+# Name of the image directory (should be last item of the mount point path)
+IMGDIR="archiso"
+
+# Mount point for the filesystem
+FSMNT="/mnt/rootfs/"
+
+# Writeable temporary work directory
+TMPDIR="ar_tmp/"
+
+# Directory for images
+IMGS="/img/"
+
+# Running checks:
+
+# Make sure we're running as root
+if [ $(id -u) != "0" ];
+	then echo "This command must be run with root priviledges."
+	exit 1
+fi
+
+#IMGLAB=$2
+
+# Make sure target is valid
+if [ ! -f $IMAGE ];
+	then echo "Image does not exist."; exit 1
+fi
+
+# Execute:
+
+STARTDIR=$(pwd)
+
+echo ""
+echo "Remastering $IMAGE, label: $IMGLAB"
+echo ""
+
+# Unmount current image
+echo "Setting up..."
+umount -v $IMGMNT
+
+# Unmount any file systems that might be mounted in our location
+umount -v $FSMNT
+
+# Remove temporary directory if it exists
+rm -r $TMPDIR
+
+# Mount image to be remastered
+mount -v -t iso9660 -o loop $IMAGE $IMGMNT
+
+# Make temporary writeable directory for us to work in
+mkdir --parents $TMPDIR
+
+# Copy files out of mounted image
+echo ""
+echo "Copying read-only files from image..."
+cp -r $IMGMNT $TMPDIR
+
+# Unmount old image
+umount -v $IMGMNT
+
+# Extract root file system
+echo ""
+echo "Extracting file system..."
+cd $TMPDIR && cp "$IMGDIR/arch/i686/root-image.fs.sfs" .
+
+# Unsquash root file system
+echo ""
+echo "Unsquashing file system..."
+unsquashfs root-image.fs.sfs
+
+# Mount root file system
+mount -v squashfs-root/root-image.fs $FSMNT
+
+# Enter root file system, update using pacman, exit
+echo ""
+echo "Running pacman -Syu"
+arch-chroot $FSMNT /usr/bin/yaourt -Syu
+
+# Unmount root file system
+umount $FSMNT
+
+# Remove old squashed root file system
+rm root-image.fs.sfs
+
+# Squash modified root filesystem
+echo ""
+echo "Squashing file system..."
+mksquashfs squashfs-root root-image.fs.sfs 
+
+# Replace old FS file with our modified one
+rm "$IMGDIR/arch/i686/root-image.fs.sfs" && cp root-image.fs.sfs "$IMGDIR/arch/i686/" 
+
+# Generate new ISO
+echo ""
+echo "Generating updated image..."
+cd $IMGDIR && genisoimage -l -r -J -V $IMGLAB -b isolinux/isolinux.bin -no-emul-boot -boot-load-size 4 -boot-info-table -c isolinux/boot.cat -o ../arch-custom.iso ./
+
+# Copy new image to the image storage directory
+echo ""
+echo "Replacing old image..."
+cd ../ && cp arch-custom.iso $IMGS
+
+# Mount new image
+mount -v -o loop,ro /img/arch-custom.iso $IMGMNT
+
+# Remove our temp files
+cd $STARTDIR && rm -r $TMPDIR
+
