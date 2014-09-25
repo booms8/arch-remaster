@@ -48,7 +48,7 @@ echo ""
 echo "Remastering $IMAGE, label: $IMGLAB"
 echo ""
 
-# Unmount anything using our mountpoint
+# Unmount current image
 echo ""
 echo "Setting up..."
 umount -v $IMGMNT
@@ -117,5 +117,9 @@ echo ""
 echo "Replacing old image..."
 cd ../ && cp arch-custom.iso $IMGS
 
+# Mount new image
+mount -o loop,ro /img/arch-custom.iso $IMGMNT
+
 # Remove our temp files
 cd $STARTDIR && rm -r $TMPDIR
+
